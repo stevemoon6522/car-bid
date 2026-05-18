@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}입찰 차량 입력 — 중고차 입찰가 추정기{% endblock %}
+{% block content %}
+<h1>입찰 차량 정보 입력</h1>
+<p class="hint">낙찰 이력에서 유사 차량을 검색해 추천 입찰가를 제시합니다.</p>
+
+<form method="post" action="/search" class="search-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  <div class="form-row">
+    <div class="form-group">
+      <label for="car_name">차명 <span class="req">*</span></label>
+      <input type="text" id="car_name" name="car_name" placeholder="예: K5" required />
+    </div>
+    <div class="form-group">
+      <label for="model_name">모델명 <span class="req">*</span></label>
+      <input type="text" id="model_name" name="model_name" placeholder="예: K5 3세대(19년~현재" required />
+    </div>
+  </div>
+
+  <div class="form-row">
+    <div class="form-group">
+      <label for="year">년식 <span class="req">*</span></label>
+      <input type="number" id="year" name="year" placeholder="예: 2021" min="1990" max="2030" required />
+    </div>
+    <div class="form-group">
+      <label for="mileage_km">주행거리 (km) <span class="req">*</span></label>
+      <input type="number" id="mileage_km" name="mileage_km" placeholder="예: 80000" min="0" required />
+    </div>
+  </div>
+
+  <div class="form-row">
+    <div class="form-group">
+      <label for="grade_first">사고 등급 <span class="req">*</span></label>
+      <select id="grade_first" name="grade_first" required>
+        <option value="" disabled selected>등급 선택</option>
+        <option value="A">A — 무사고 (교환 이력 없음)</option>
+        <option value="B">B — 외관 교환 있음</option>
+        <option value="C">C — 일반골격 교환 있음</option>
+        <option value="D">D — 주요골격 교환 있음</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="color">색상 <span class="req">*</span></label>
+      <input type="text" id="color" name="color" placeholder="예: 검정, 흰색, 은색" required />
+    </div>
+  </div>
+
+  <div class="form-group full-width">
+    <label for="options">옵션 (보유 옵션을 쉼표로 구분해 입력)</label>
+    <textarea id="options" name="options" rows="3"
+      placeholder="예: 네비, 스마트키, 선루프, HID/LED, 어라운드뷰"></textarea>
+    <small>선루프 여부가 가격 보정에 사용됩니다. 없으면 비워두세요.</small>
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn-primary">검색</button>
+  </div>
+</form>
+{% endblock %}

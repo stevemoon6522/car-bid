@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}검색 결과 — 중고차 입찰가 추정기{% endblock %}
+{% block content %}
+
+<div class="results-header">
+  <h1>검색 결과</h1>
+  <a href="/" class="btn-secondary">검색 다시하기</a>
+</div>
+
+<div class="input-echo">
+  <strong>입력 차량:</strong>
+  {{ input_data.car_name }} / {{ input_data.model_name }} /
+  {{ input_data.year }}년 / {{ "{:,}".format(input_data.mileage_km) }}km /
+  등급 {{ input_data.grade_first }} / {{ input_data.color }}
+  {% if input_data.options %}
+    / 옵션: {{ input_data.options }}
+  {% endif %}
+</div>
+
+{% if no_match %}
+  <div class="no-match">
+    <p>비교 불가 — 최근 6개월 이내 동일 차명+모델명 낙찰 이력 없음</p>
+    <p>차명 또는 모델명을 확인 후 다시 검색하세요.</p>
+  </div>
+{% else %}
+
+  <div class="period-badge {% if period_months == 3 %}period-ok{% else %}period-warn{% endif %}">
+    {% if period_months == 3 %}
+      데이터 기간: 최근 3개월 (신뢰도 높음)
+    {% else %}
+      데이터 기간: 최근 6개월 (3개월 이내 데이터 없음 — 시세 변동 가능)
+    {% endif %}
+    &nbsp;| 후보 {{ total_candidates }}건 중 상위 {{ ranked|length }}건 표시
+  </div>
+
+  {% if ranked and ranked | map(attribute='score') | list | max < 50 %}
+  <div class="low-conf-warn">
+    ⚠ 모든 후보 점수가 50 미만 — 매칭 신뢰도 낮음. 인간 판단 권장.
+  </div>
+  {% endif %}
+
+  <div class="cards">
+    {% for row in ranked %}
+    <div class="card">
+      <div class="card-rank">#{{ loop.index }}</div>
+      <div class="card-score">
+        <span class="score-total">{{ row.score }}/100</span>
+        <span class="score-breakdown">
+          등급 {{ row.score_breakdown.grade }}
+          + 년식 {{ row.score_breakdown.year }}
+          + 주행 {{ row.score_breakdown.mileage }}
+        </span>
+      </div>
+
+      <table class="card-details">
+        <tr><th>경매일자</th><td>{{ row.auction_date }}</td></tr>
+        <tr><th>차량명</th><td>{{ row.full_title or (row.car_name ~ " " ~ row.model_name) }}</td></tr>
+        <tr><th>년식</th><td>{{ row.year }}년</td></tr>
+        <tr><th>주행거리</th><td>{{ "{:,}".format(row.mileage_km) if row.mileage_km else "-" }}km</td></tr>
+        <tr><th>등급</th><td>{{ row.grade or "-" }} (앞자리: {{ row.grade_first or "-" }})</td></tr>
+        <tr><th>색상</th><td>{{ row.color or "-" }}</td></tr>
+        {% if row.options %}
+        <tr><th>옵션</th>
+          <td class="options-cell">{{ row.options[:120] }}{% if row.options|length > 120 %}…{% endif %}</td>
+        </tr>
+        {% endif %}
+      </table>
+
+      <div class="price-section">
+        <div class="price-row">
+          <span class="price-label">낙찰가 (VAT포함)</span>
+          <span class="price-value">{{ "{:,}".format(row.final_price) }}만원</span>
+        </div>
+        {% if row.adjustment_reasons %}
+        <div class="adjustments">
+          {% for reason in row.adjustment_reasons %}
+            <div class="adjustment-item">- {{ reason }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <div class="price-row">
+          <span class="price-label">보정 후 가격</span>
+          <span class="price-value">{{ "{:,}".format(row.adjusted_price) }}만원</span>
+        </div>
+        <div class="price-row recommended">
+          <span class="price-label">보수 추천가 (-15%)</span>
+          <span class="price-value highlight">{{ "{:,}".format(row.recommended_bid) }}만원</span>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if summary %}
+  <div class="summary-box">
+    <h2>추천 입찰가 요약</h2>
+    <div class="summary-stats">
+      <div class="stat">
+        <span class="stat-label">평균</span>
+        <span class="stat-value">{{ "{:,}".format(summary.mean) }}만원</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">중앙값</span>
+        <span class="stat-value">{{ "{:,}".format(summary.median) }}만원</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">최저</span>
+        <span class="stat-value">{{ "{:,}".format(summary.min) }}만원</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">최고</span>
+        <span class="stat-value">{{ "{:,}".format(summary.max) }}만원</span>
+      </div>
+    </div>
+    <p class="summary-note">보수 추천가는 보정 후 낙찰가의 85% (-15%) 기준입니다.</p>
+  </div>
+  {% endif %}
+
+{% endif %}
+
+<div class="back-link">
+  <a href="/" class="btn-secondary">검색 다시하기</a>
+</div>
+
+{% endblock %}

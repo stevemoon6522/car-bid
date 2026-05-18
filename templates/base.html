@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}중고차 입찰가 추정기{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">중고차 입찰가 추정기</a>
+    <nav>
+      <a href="/">홈</a>
+      {% if request.cookies.get('session_id') %}
+        <form method="post" action="/logout" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}" />
+          <button type="submit" class="nav-logout">로그아웃</button>
+        </form>
+      {% endif %}
+    </nav>
+  </header>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="footer">
+    <span>중고차 경매 낙찰가 기반 입찰가 추정 시스템</span>
+  </footer>
+</body>
+</html>
