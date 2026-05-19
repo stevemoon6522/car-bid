@@ -99,14 +99,22 @@ class TestParseRow:
         values = _make_values(model_name=None)
         assert parse_row(values) is None
 
-    def test_missing_status_returns_none(self):
-        values = _make_values(status=None)
-        assert parse_row(values) is None
+    def test_status_hardcoded_to_won(self):
+        # The sheet '피벗데이터(낙찰만)' contains only winning bids; parse_row
+        # therefore ignores the input status column (col X = 내수/수출) and
+        # always emits status='낙찰'. Verify the behavior — passing
+        # status=None / "anything" should NOT cause the row to be skipped.
+        for s in (None, "수출", "내수", "유찰", ""):
+            values = _make_values(status=s)
+            record = parse_row(values)
+            assert record is not None, f"Row dropped unexpectedly when status={s!r}"
+            assert record["status"] == "낙찰"
 
     def test_header_row_skipped(self):
-        # A header row where car_name cell literally says "차명"
-        values = _make_values(car_name="차명")
-        assert parse_row(values) is None
+        # A header row where car_name cell literally says "차종" (D column header)
+        for hdr in ("차종", "차명"):
+            values = _make_values(car_name=hdr)
+            assert parse_row(values) is None
 
     def test_row_hash_is_sha256_hex(self):
         record = parse_row(_make_values())
@@ -124,11 +132,17 @@ class TestParseRow:
         assert parse_row(v1)["row_hash"] != parse_row(v2)["row_hash"]
 
     def test_short_row_padded_gracefully(self):
-        # Row with only 10 values should not raise IndexError
+        # Row with only 10 values should not raise IndexError. car_name (idx 3)
+        # and model_name (idx 4) are present, so parse_row returns a record;
+        # later fields (mileage, prices, etc.) are simply None.
         short = _make_values()[:10]
         record = parse_row(short)
-        # car_name at index 3 = "K5", model_name at 4, but status at 23 = None → returns None
-        assert record is None
+        assert record is not None
+        assert record["car_name"] == "K5"
+        assert record["model_name"] == "K5 3세대(19년~현재"
+        assert record["status"] == "낙찰"
+        assert record["final_price"] is None
+        assert record["mileage_km"] is None
 
     def test_integer_fields_parsed(self):
         record = parse_row(_make_values(year=2020, mileage_km=50_000, final_price=1200))

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ingest_excel.py — Parse Excel sheet '이번주거래(누적)' and upsert into car_auctions.
+"""ingest_excel.py — Parse Excel sheet '피벗데이터(낙찰만)' and upsert into car_auctions.
 
 Usage:
     python scripts/ingest_excel.py <path/to/file.xlsx> [--upsert]
@@ -11,7 +11,7 @@ Environment variables required:
     SUPABASE_URL
     SUPABASE_SERVICE_ROLE_KEY
 
-Column mapping (0-indexed, sheet '이번주거래(누적)'):
+Column mapping (0-indexed, sheet '피벗데이터(낙찰만)'):
     0  경매일자        auction_date
     1  차종            vehicle_class
     2  제작사          maker
@@ -53,7 +53,7 @@ from supabase import create_client
 
 load_dotenv()
 
-SHEET_NAME = "이번주거래(누적)"
+SHEET_NAME = "피벗데이터(낙찰만)"
 BATCH_SIZE = 500
 
 
@@ -106,28 +106,52 @@ def _compute_hash(auction_date, car_name, model_name, year, mileage_km, grade, c
 def parse_row(row_values: list) -> Optional[dict]:
     """Convert a list of cell values into a DB-ready dict.
 
-    Returns None if the row lacks car_name, model_name, or status (header/empty rows).
+    Actual column positions in '피벗데이터(낙찰만)' (verified 2026-05-19):
+      0  A  개최일자          auction_date
+      1  B  차군              vehicle_class (RV/중형/소형/대형 등)
+      2  C  제작사            maker (예: KG모빌리티, 기아)
+      3  D  차종              car_name (예: 렉스턴 스포츠, K5)
+      4  E  모델명            model_name (예: 'K5 3세대(19년~현재')
+      5  F  차명 (*)          full_title (제작사+차종+모델+트림 한줄)
+      6  G  년식              year
+      7  H  최초등록일        first_registered
+      8  I  차량경력          search_category (자가용/렌터카/영업용)
+      9  J  원동기형식        engine_code
+      10 K  배기량            engine_cc
+      11 L  연료              fuel
+      12 M  평가점            grade (2글자, 예: BC)
+      13 N  색상              color
+      14 O  주행거리          mileage_km
+      15 P  변속기            transmission
+      16 Q  옵션              options
+      17 R  출품구분          product_type
+      18 S  재출품횟수        accident_count (재출품 횟수; 사고 횟수 X)
+      19 T  사고내용          inspection_notes
+      20 U  시작가            start_price
+      21 V  희망가            bid_price (희망가; 응찰가 X)
+      22 W  낙찰금액VAT포함   final_price ⭐
+      23 X  내수/수출         (저장 안 함 — domestic_export 라벨용)
+
+    Status is hardcoded to '낙찰' because the sheet '피벗데이터(낙찰만)' only
+    contains winning bids (the name literally means 'pivot data, winners only').
     """
     if len(row_values) < 24:
-        # Pad with None so index access doesn't raise.
         row_values = list(row_values) + [None] * (24 - len(row_values))
 
-    car_name = _text(row_values[3])
-    model_name = _text(row_values[4])
-    status = _text(row_values[23])
+    car_name = _text(row_values[3])    # D 차종
+    model_name = _text(row_values[4])  # E 모델명
 
-    if not car_name or not model_name or not status:
+    if not car_name or not model_name:
         return None
-    # Skip header-like rows where car_name is the literal column name.
-    if car_name == "차명":
+    if car_name == "차종" or car_name == "차명":
         return None
 
     auction_date = _date(row_values[0])
-    grade = _text(row_values[12])
-    color = _text(row_values[13])
-    mileage_km = _int(row_values[14])
-    final_price = _int(row_values[22])
-    year = _int(row_values[6])
+    grade = _text(row_values[12])      # M 평가점
+    color = _text(row_values[13])      # N 색상
+    mileage_km = _int(row_values[14])  # O 주행거리
+    final_price = _int(row_values[22]) # W 낙찰금액VAT포함
+    year = _int(row_values[6])         # G 년식
 
     grade_first: Optional[str] = None
     if grade and len(grade) >= 1 and grade[0].upper() in "ABCDF":
@@ -141,33 +165,31 @@ def parse_row(row_values: list) -> Optional[dict]:
         auction_date, car_name, model_name, year, mileage_km, grade, color, final_price
     )
 
-    first_registered = _date(row_values[7])
-
     return {
         "auction_date": auction_date,
-        "vehicle_class": _text(row_values[1]),
-        "maker": _text(row_values[2]),
-        "car_name": car_name,
-        "model_name": model_name,
-        "full_title": _text(row_values[5]),
-        "year": year,
-        "first_registered": first_registered,
-        "transmission": _text(row_values[8]),
-        "engine_code": _text(row_values[9]),
-        "engine_cc": _int(row_values[10]),
-        "fuel": _text(row_values[11]),
-        "grade": grade,
-        "color": color,
-        "mileage_km": mileage_km,
-        "search_category": _text(row_values[15]),
-        "options": _text(row_values[16]),
-        "product_type": _text(row_values[17]),
-        "accident_count": _int(row_values[18]),
-        "inspection_notes": _text(row_values[19]),
-        "start_price": _int(row_values[20]),
-        "bid_price": _int(row_values[21]),
-        "final_price": final_price,
-        "status": status,
+        "vehicle_class": _text(row_values[1]),      # B 차군
+        "maker": _text(row_values[2]),              # C 제작사
+        "car_name": car_name,                       # D 차종
+        "model_name": model_name,                   # E 모델명
+        "full_title": _text(row_values[5]),         # F 차명 (*)
+        "year": year,                               # G 년식
+        "first_registered": _date(row_values[7]),   # H 최초등록일
+        "search_category": _text(row_values[8]),    # I 차량경력 (자가용/렌터카)
+        "engine_code": _text(row_values[9]),        # J 원동기형식
+        "engine_cc": _int(row_values[10]),          # K 배기량
+        "fuel": _text(row_values[11]),              # L 연료
+        "grade": grade,                             # M 평가점
+        "color": color,                             # N 색상
+        "mileage_km": mileage_km,                   # O 주행거리
+        "transmission": _text(row_values[15]),      # P 변속기
+        "options": _text(row_values[16]),           # Q 옵션
+        "product_type": _text(row_values[17]),      # R 출품구분
+        "accident_count": _int(row_values[18]),    # S 재출품횟수 (semantic mismatch — kept for schema)
+        "inspection_notes": _text(row_values[19]),  # T 사고내용
+        "start_price": _int(row_values[20]),        # U 시작가
+        "bid_price": _int(row_values[21]),          # V 희망가 (semantic mismatch — kept for schema)
+        "final_price": final_price,                 # W 낙찰금액VAT포함
+        "status": "낙찰",                            # Hardcoded — sheet is 낙찰만
         "grade_first": grade_first,
         "is_outlier": is_outlier,
         "row_hash": row_hash,
