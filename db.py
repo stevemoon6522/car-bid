@@ -92,22 +92,48 @@ def list_car_models_index(force_refresh: bool = False) -> list[dict]:
        and now - _INDEX_CACHE["ts"] < INDEX_CACHE_TTL_SEC:
         return _INDEX_CACHE["data"]
     sb = get_client()
-    # Paginate in batches of 1000 — PostgREST default cap.
     all_rows: list[dict] = []
     batch = 1000
     page = 0
-    while True:
-        resp = (
-            sb.table("car_models_distinct")
-            .select("car_name, model_name, n")
-            .range(page * batch, (page + 1) * batch - 1)
-            .execute()
-        )
-        rows = resp.data or []
-        all_rows.extend(rows)
-        if len(rows) < batch:
-            break
-        page += 1
+    # Try the SQL view first (fast — pre-aggregated).
+    try:
+        while True:
+            resp = (
+                sb.table("car_models_distinct")
+                .select("car_name, model_name, n")
+                .range(page * batch, (page + 1) * batch - 1)
+                .execute()
+            )
+            rows = resp.data or []
+            all_rows.extend(rows)
+            if len(rows) < batch:
+                break
+            page += 1
+    except Exception:
+        # Fallback: aggregate distinct from car_auctions directly. Slower
+        # (~91 round-trips) but works even before the operator creates the
+        # SQL view. Result is the same shape so callers don't care.
+        all_rows = []
+        seen: set[tuple[str, str]] = set()
+        page = 0
+        while True:
+            resp = (
+                sb.table("car_auctions")
+                .select("car_name, model_name")
+                .range(page * batch, (page + 1) * batch - 1)
+                .execute()
+            )
+            rows = resp.data or []
+            for r in rows:
+                cn = (r.get("car_name") or "").strip()
+                mn = (r.get("model_name") or "").strip()
+                if cn and mn and (cn, mn) not in seen:
+                    seen.add((cn, mn))
+                    all_rows.append({"car_name": cn, "model_name": mn, "n": 0})
+            if len(rows) < batch:
+                break
+            page += 1
+        all_rows.sort(key=lambda r: (r["car_name"], r["model_name"]))
     _INDEX_CACHE["data"] = all_rows
     _INDEX_CACHE["ts"] = now
     return all_rows

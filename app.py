@@ -242,10 +242,23 @@ async def api_index(session_id: Optional[str] = Cookie(None)):
 
     Response: {cars: [str, ...], models: {car_name: [model_name, ...], ...}}
     Auth-required (session cookie). Backed by a 10-minute in-process cache.
+    Falls back to a direct distinct query on car_auctions if the SQL view
+    car_models_distinct does not exist (slower but still works).
     """
     if session_id not in _sessions or _sessions[session_id] < _now():
         return JSONResponse({"error": "unauthorized"}, status_code=401)
-    rows = db.list_car_models_index()
+    try:
+        rows = db.list_car_models_index()
+    except Exception as e:
+        # Surface the actual error to the UI hint so the operator can act on
+        # it (e.g. "create the SQL view" or "Supabase down").
+        msg = str(e)
+        if "car_models_distinct" in msg or "relation" in msg.lower():
+            msg = "SQL 뷰 'car_models_distinct' 가 없음 — Supabase SQL Editor에서 뷰 생성 SQL 실행 필요"
+        return JSONResponse(
+            {"error": f"index load failed: {msg}"},
+            status_code=503,
+        )
     models: dict[str, list[str]] = {}
     for r in rows:
         cn = r.get("car_name")
