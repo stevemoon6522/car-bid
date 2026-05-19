@@ -114,6 +114,7 @@ body {
 .search-form { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1.8rem; }
 .search-form h1 { margin-bottom: .4rem; }
 .hint { color: var(--muted); margin-bottom: 1.4rem; font-size: .9rem; }
+.hint-muted { color: var(--muted); font-size: .78rem; display: block; margin-top: 4px; }
 
 .form-row { display: flex; gap: 1rem; margin-bottom: 1rem; }
 .form-group { flex: 1; display: flex; flex-direction: column; }

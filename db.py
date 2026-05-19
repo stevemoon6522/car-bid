@@ -58,3 +58,56 @@ def count_all_auctions() -> int:
     sb = get_client()
     resp = sb.table("car_auctions").select("id", count="exact").execute()
     return resp.count or 0
+
+
+# ---------------------------------------------------------------------------
+# Autocomplete index (distinct car_name + model_name pairs, cached in-process)
+# ---------------------------------------------------------------------------
+
+import time as _time
+
+_INDEX_CACHE: dict = {"data": None, "ts": 0.0}
+INDEX_CACHE_TTL_SEC = 600  # 10 minutes
+
+
+def list_car_models_index(force_refresh: bool = False) -> list[dict]:
+    """Return distinct (car_name, model_name) pairs from car_auctions.
+
+    Reads from the `car_models_distinct` SQL view (one query) and caches the
+    result in-process for INDEX_CACHE_TTL_SEC. Each entry is {car_name,
+    model_name, n} where n is the row count for that combination.
+
+    The view must be created by the operator once via Supabase SQL Editor:
+
+        CREATE OR REPLACE VIEW public.car_models_distinct AS
+        SELECT car_name, model_name, COUNT(*)::int AS n
+        FROM public.car_auctions
+        WHERE car_name IS NOT NULL AND car_name <> ''
+          AND model_name IS NOT NULL AND model_name <> ''
+        GROUP BY car_name, model_name
+        ORDER BY car_name, model_name;
+    """
+    now = _time.time()
+    if (not force_refresh) and _INDEX_CACHE["data"] is not None \
+       and now - _INDEX_CACHE["ts"] < INDEX_CACHE_TTL_SEC:
+        return _INDEX_CACHE["data"]
+    sb = get_client()
+    # Paginate in batches of 1000 — PostgREST default cap.
+    all_rows: list[dict] = []
+    batch = 1000
+    page = 0
+    while True:
+        resp = (
+            sb.table("car_models_distinct")
+            .select("car_name, model_name, n")
+            .range(page * batch, (page + 1) * batch - 1)
+            .execute()
+        )
+        rows = resp.data or []
+        all_rows.extend(rows)
+        if len(rows) < batch:
+            break
+        page += 1
+    _INDEX_CACHE["data"] = all_rows
+    _INDEX_CACHE["ts"] = now
+    return all_rows

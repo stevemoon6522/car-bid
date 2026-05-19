@@ -236,6 +236,25 @@ async def index(request: Request, session_id: Optional[str] = Cookie(None)):
     return templates.TemplateResponse(request, "index.html", {"csrf_token": csrf})
 
 
+@app.get("/api/index")
+async def api_index(session_id: Optional[str] = Cookie(None)):
+    """Return distinct car_name + model_name pairs for autocomplete.
+
+    Response: {cars: [str, ...], models: {car_name: [model_name, ...], ...}}
+    Auth-required (session cookie). Backed by a 10-minute in-process cache.
+    """
+    if session_id not in _sessions or _sessions[session_id] < _now():
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    rows = db.list_car_models_index()
+    models: dict[str, list[str]] = {}
+    for r in rows:
+        cn = r.get("car_name")
+        mn = r.get("model_name")
+        if cn and mn:
+            models.setdefault(cn, []).append(mn)
+    return {"cars": sorted(models.keys()), "models": models}
+
+
 @app.post("/search", response_class=HTMLResponse)
 async def search(
     request: Request,
