@@ -173,27 +173,27 @@ templates = Jinja2Templates(directory="templates")
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "login.html", {"error": None})
 
 
 @app.post("/login")
 async def login_submit(request: Request, password: str = Form(...)):
     if not ADMIN_PASSWORD:
         return templates.TemplateResponse(
-            "login.html",
-            {"request": request, "error": "서버 비밀번호가 설정되지 않았습니다."},
+            request, "login.html",
+            {"error": "서버 비밀번호가 설정되지 않았습니다."},
         )
     client_ip = request.client.host if request.client else "unknown"
     if _check_login_rate_limit(client_ip):
         return templates.TemplateResponse(
-            "login.html",
-            {"request": request, "error": "로그인 시도 횟수 초과. 잠시 후 다시 시도하세요."},
+            request, "login.html",
+            {"error": "로그인 시도 횟수 초과. 잠시 후 다시 시도하세요."},
             status_code=429,
         )
     if not secrets.compare_digest(password, ADMIN_PASSWORD):
         _record_login_failure(client_ip)
         return templates.TemplateResponse(
-            "login.html", {"request": request, "error": "비밀번호가 틀렸습니다."}
+            request, "login.html", {"error": "비밀번호가 틀렸습니다."}
         )
     # Success — clear failure history, create session + CSRF token.
     _login_failures.pop(client_ip, None)
@@ -233,7 +233,7 @@ async def index(request: Request, session_id: Optional[str] = Cookie(None)):
     if r := _admin_or_redirect(session_id):
         return r
     csrf = request.cookies.get("csrf_token", "")
-    return templates.TemplateResponse("index.html", {"request": request, "csrf_token": csrf})
+    return templates.TemplateResponse(request, "index.html", {"csrf_token": csrf})
 
 
 @app.post("/search", response_class=HTMLResponse)
@@ -278,9 +278,8 @@ async def search(
 
     if not rows:
         return templates.TemplateResponse(
-            "results.html",
+            request, "results.html",
             {
-                "request": request,
                 "no_match": True,
                 "input_data": input_data,
                 "period_months": period_months,
@@ -292,9 +291,8 @@ async def search(
     summary = m.summarize_bids(ranked)
 
     return templates.TemplateResponse(
-        "results.html",
+        request, "results.html",
         {
-            "request": request,
             "no_match": False,
             "input_data": input_data,
             "ranked": ranked,
